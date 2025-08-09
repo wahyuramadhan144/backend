@@ -1,25 +1,43 @@
-const db = require("../config/db");
 const xlsx = require("xlsx");
+const { createClient } = require("@supabase/supabase-js");
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
 exports.getMessages = async (req, res) => {
   try {
-    const [messages] = await db.query("SELECT * FROM fans_messages ORDER BY id DESC");
-    res.status(200).json(messages);
+    const { data, error } = await supabase
+      .from("fans_messages")
+      .select("*")
+      .order("id", { ascending: false });
+
+    if (error) throw error;
+
+    res.status(200).json(data);
   } catch (err) {
-    console.error("Gagal ambil pesan:", err);
+    console.error("Gagal ambil pesan:", err.message);
     res.status(500).json({ error: "Gagal ambil pesan" });
   }
 };
 
+// CREATE pesan baru
 exports.createMessage = async (req, res) => {
   try {
-    const { nama, pesan } = req.body;
-    if (!nama || !pesan) return res.status(400).json({ error: "Nama dan pesan wajib diisi" });
+    const { sender, message } = req.body;
+    if (!sender || !message)
+      return res.status(400).json({ error: "Sender dan message wajib diisi" });
 
-    await db.query("INSERT INTO fans_messages (nama, pesan) VALUES (?, ?)", [nama, pesan]);
+    const { error } = await supabase
+      .from("fans_messages")
+      .insert([{ sender, message, is_approve: false }]);
+
+    if (error) throw error;
+
     res.status(201).json({ message: "Pesan berhasil ditambahkan" });
   } catch (err) {
-    console.error("Gagal tambah pesan:", err);
+    console.error("Gagal tambah pesan:", err.message);
     res.status(500).json({ error: "Gagal tambah pesan" });
   }
 };
@@ -27,10 +45,17 @@ exports.createMessage = async (req, res) => {
 exports.approveMessage = async (req, res) => {
   try {
     const { id } = req.params;
-    await db.query("UPDATE fans_messages SET approved = true WHERE id = ?", [id]);
+
+    const { error } = await supabase
+      .from("fans_messages")
+      .update({ is_approve: true })
+      .eq("id", id);
+
+    if (error) throw error;
+
     res.status(200).json({ message: "Pesan disetujui" });
   } catch (err) {
-    console.error("Gagal approve pesan:", err);
+    console.error("Gagal approve pesan:", err.message);
     res.status(500).json({ error: "Gagal approve pesan" });
   }
 };
@@ -38,20 +63,33 @@ exports.approveMessage = async (req, res) => {
 exports.deleteMessage = async (req, res) => {
   try {
     const { id } = req.params;
-    await db.query("DELETE FROM fans_messages WHERE id = ?", [id]);
+
+    const { error } = await supabase
+      .from("fans_messages")
+      .delete()
+      .eq("id", id);
+
+    if (error) throw error;
+
     res.status(200).json({ message: "Pesan berhasil dihapus" });
   } catch (err) {
-    console.error("Gagal hapus pesan:", err);
+    console.error("Gagal hapus pesan:", err.message);
     res.status(500).json({ error: "Gagal hapus pesan" });
   }
 };
 
 exports.getReviews = async (req, res) => {
   try {
-    const [reviews] = await db.query("SELECT * FROM review_vc ORDER BY id DESC");
-    res.status(200).json(reviews);
+    const { data, error } = await supabase
+      .from("review_vc")
+      .select("*")
+      .order("id", { ascending: false });
+
+    if (error) throw error;
+
+    res.status(200).json(data);
   } catch (err) {
-    console.error("Gagal ambil review:", err);
+    console.error("Gagal ambil review:", err.message);
     res.status(500).json({ error: "Gagal ambil review" });
   }
 };
@@ -60,15 +98,24 @@ exports.createReview = async (req, res) => {
   try {
     const { nama, tanggal, review, rating } = req.body;
     if (!nama || !tanggal || !review)
-      return res.status(400).json({ error: "Field nama, tanggal, dan review wajib diisi" });
+      return res
+        .status(400)
+        .json({ error: "Field nama, tanggal, dan review wajib diisi" });
 
-    await db.query(
-      "INSERT INTO review_vc (nama, tanggal, review, rating) VALUES (?, ?, ?, ?)",
-      [nama, tanggal, review, rating || null]
-    );
+    const { error } = await supabase.from("review_vc").insert([
+      {
+        nama,
+        tanggal,
+        review,
+        rating: rating || null,
+      },
+    ]);
+
+    if (error) throw error;
+
     res.status(201).json({ message: "Review berhasil ditambahkan" });
   } catch (err) {
-    console.error("Gagal tambah review:", err);
+    console.error("Gagal tambah review:", err.message);
     res.status(500).json({ error: "Gagal tambah review" });
   }
 };
@@ -76,10 +123,14 @@ exports.createReview = async (req, res) => {
 exports.deleteReview = async (req, res) => {
   try {
     const { id } = req.params;
-    await db.query("DELETE FROM review_vc WHERE id = ?", [id]);
+
+    const { error } = await supabase.from("review_vc").delete().eq("id", id);
+
+    if (error) throw error;
+
     res.status(200).json({ message: "Review berhasil dihapus" });
   } catch (err) {
-    console.error("Gagal hapus review:", err);
+    console.error("Gagal hapus review:", err.message);
     res.status(500).json({ error: "Gagal hapus review" });
   }
 };
@@ -87,25 +138,36 @@ exports.deleteReview = async (req, res) => {
 exports.importReviewFromExcel = async (req, res) => {
   try {
     const file = req.file;
-    if (!file) return res.status(400).json({ error: "File Excel tidak ditemukan" });
+    if (!file)
+      return res.status(400).json({ error: "File Excel tidak ditemukan" });
 
     const workbook = xlsx.read(file.buffer, { type: "buffer" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = xlsx.utils.sheet_to_json(sheet);
 
-    for (const row of data) {
-      const { nama, tanggal, review, rating } = row;
-      if (nama && tanggal && review) {
-        await db.query(
-          "INSERT INTO review_vc (nama, tanggal, review, rating) VALUES (?, ?, ?, ?)",
-          [nama, tanggal, review, rating || null]
-        );
-      }
-    }
+    const rowsToInsert = data
+      .filter((row) => row.nama && row.tanggal && row.review)
+      .map((row) => ({
+        nama: row.nama,
+        tanggal: row.tanggal,
+        review: row.review,
+        rating: row.rating || null,
+      }));
 
-    res.status(200).json({ message: "Import data dari Excel berhasil" });
+    if (rowsToInsert.length === 0)
+      return res
+        .status(400)
+        .json({ error: "Tidak ada data valid di file Excel" });
+
+    const { error } = await supabase.from("review_vc").insert(rowsToInsert);
+
+    if (error) throw error;
+
+    res.status(200).json({
+      message: `Import data dari Excel berhasil. Total: ${rowsToInsert.length} baris`,
+    });
   } catch (err) {
-    console.error("Gagal import Excel:", err);
+    console.error("Gagal import Excel:", err.message);
     res.status(500).json({ error: "Gagal import data dari Excel" });
   }
 };
