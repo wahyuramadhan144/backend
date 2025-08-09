@@ -17,7 +17,7 @@ const apiKey = process.env.JKT48_API_KEY || "NK-SUJ1";
 const NAYLA_ID = "65ce68ed1dd7aa2c8c0ca780";
 
 app.use(cors({
-  origin: ["https://backend-seven-nu-19.vercel.app", "https://admin.nayrakuen.com", "https://nayrakuen.com", "http://localhost:3000", "http://localhost:3001"],
+  origin: ["https://backend-seven-nu-19.vercel.app", "https://admiral.nayrakuen.com", "https://nayrakuen.com", "http://localhost:3000", "http://localhost:3001"],
   credentials: true
 }));
 app.use(express.json());
